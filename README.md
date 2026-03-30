@@ -1,7 +1,7 @@
 # cosc320project
 
-
 from collections import deque
+import heapq
 
 
 # Station #
@@ -17,71 +17,53 @@ class Station:
         return f"{self.name} (ID: {self.station_id}, Capacity: {self.capacity})"
 
 
-
 # Transit System #
 
 class TransitSystem:
     def __init__(self):
-        self.graph = {}        # adjacency list
-        self.stations = {}     # id >>> Station
-        self.undo_stack = []   # stack for undo
+        self.graph = {}        # adjacency list: {id: [(neighbor, distance)]}
+        self.stations = {}     # id -> Station
+        self.undo_stack = []
 
 
-    # Graph Ops #
+    # -------------------------
+    # Graph Operations
+    # -------------------------
 
     def add_station(self, station_id, name, capacity):
         if station_id in self.stations:
-            print("Station already exists ")
+            print("Station already exists")
             return
 
         station = Station(station_id, name, capacity)
         self.stations[station_id] = station
         self.graph[station_id] = []
 
-        self.undo_stack.append(("remove_station ", station_id))
-        print("Station added ")
+        print("Station added")
 
-    def remove_station(self, station_id):
-        if station_id not in self.graph:
-            print("Station not found ")
-            return
-
-        del self.graph[station_id]
-        del self.stations[station_id]
-
-        for neighbors in self.graph.values():
-            if station_id in neighbors:
-                neighbors.remove(station_id)
-
-        print("Station removed ")
-
-    def add_connection(self, id1, id2):
+    def add_connection(self, id1, id2, distance):
         if id1 not in self.graph or id2 not in self.graph:
-            print("Invalid station IDs ")
+            print("Invalid station IDs")
             return
 
-        self.graph[id1].append(id2)
-        self.graph[id2].append(id1)
+        self.graph[id1].append((id2, distance))
+        self.graph[id2].append((id1, distance))
 
-        self.undo_stack.append(("remove_connection ", id1, id2))
-        print("Connection added ")
-
-    def remove_connection(self, id1, id2):
-        if id2 in self.graph[id1]:
-            self.graph[id1].remove(id2)
-        if id1 in self.graph[id2]:
-            self.graph[id2].remove(id1)
-
-        print("Connection removed ")
+        print("Connection added")
 
     def display_network(self):
-        print("\nTransit Network: ")
+        print("\nTransit Network:")
         for station_id in self.graph:
-            neighbors = [self.stations[n].name for n in self.graph[station_id]]
+            neighbors = [
+                f"{self.stations[n].name} ({d})"
+                for n, d in self.graph[station_id]
+            ]
             print(f"{self.stations[station_id].name} -> {neighbors}")
 
 
-    # DFS #
+    # -------------------------
+    # DFS
+    # -------------------------
 
     def dfs(self, start, visited=None):
         if visited is None:
@@ -90,12 +72,14 @@ class TransitSystem:
         visited.add(start)
         print(self.stations[start].name)
 
-        for neighbor in self.graph[start]:
+        for neighbor, _ in self.graph[start]:
             if neighbor not in visited:
                 self.dfs(neighbor, visited)
 
 
-    # BFS #
+    # -------------------------
+    # BFS
+    # -------------------------
 
     def bfs(self, start):
         visited = set()
@@ -108,176 +92,165 @@ class TransitSystem:
                 print(self.stations[node].name)
                 visited.add(node)
 
-                for neighbor in self.graph[node]:
+                for neighbor, _ in self.graph[node]:
                     if neighbor not in visited:
                         queue.append(neighbor)
 
 
-    # Shortest Path (BFS) #
+    # -------------------------
+    # Traffic Adjustment
+    # -------------------------
 
-    def shortest_path(self, start, end):
-        queue = deque([(start, [start])])
+    def get_traffic_weight(self, base_distance, station_id):
+        traffic = len(self.stations[station_id].passengers)
+        return base_distance + traffic
+
+
+    # -------------------------
+    # Dijkstra (Shortest Path)
+    # -------------------------
+
+    def dijkstra(self, start, end):
+        pq = [(0, start, [])]  # (distance, node, path)
         visited = set()
 
-        while queue:
-            current, path = queue.popleft()
+        while pq:
+            dist, current, path = heapq.heappop(pq)
+
+            if current in visited:
+                continue
+
+            path = path + [current]
 
             if current == end:
-                return path
+                return dist, path
 
             visited.add(current)
 
-            for neighbor in self.graph[current]:
+            for neighbor, weight in self.graph[current]:
                 if neighbor not in visited:
-                    queue.append((neighbor, path + [neighbor]))
+                    adjusted_weight = self.get_traffic_weight(weight, neighbor)
+                    heapq.heappush(pq, (dist + adjusted_weight, neighbor, path))
 
         return None
 
 
-    # Passenger Simulation #
+    # -------------------------
+    # Helper: Print Path
+    # -------------------------
+
+    def print_path(self, path):
+        return " -> ".join(self.stations[p].name for p in path)
+
+
+    # -------------------------
+    # Search by Name
+    # -------------------------
+
+    def search_by_name(self, name):
+        for station in self.stations.values():
+            if station.name.lower() == name.lower():
+                return station.station_id
+        return None
+
+
+    # -------------------------
+    # Passenger Simulation
+    # -------------------------
 
     def add_passenger(self, station_id, name):
         if station_id not in self.stations:
-            print("Station not found.")
+            print("Station not found")
             return
 
         self.stations[station_id].passengers.append(name)
-        print("Passenger added.")
+        print("Passenger added")
 
     def board_passenger(self, station_id):
         if self.stations[station_id].passengers:
             passenger = self.stations[station_id].passengers.pop(0)
-            print(f"{passenger} boarded.")
+            print(f"{passenger} boarded")
         else:
-            print("No passengers waiting.")
+            print("No passengers waiting")
 
 
-    # Sorting #
-
-    def bubble_sort_stations(self):
-        station_list = list(self.stations.values())
-
-        for i in range(len(station_list)):
-            for j in range(0, len(station_list) - i - 1):
-                if station_list[j].capacity > station_list[j + 1].capacity:
-                    station_list[j], station_list[j + 1] = station_list[j + 1], station_list[j]
-
-        return station_list
-
-
-    # Searching #
-
-    def linear_search(self, station_id):
-        for station in self.stations.values():
-            if station.station_id == station_id:
-                return station
-        return None
-
-    def binary_search(self, station_list, target_id):
-        low = 0
-        high = len(station_list) - 1
-
-        while low <= high:
-            mid = (low + high) // 2
-
-            if station_list[mid].station_id == target_id:
-                return station_list[mid]
-            elif station_list[mid].station_id < target_id:
-                low = mid + 1
-            else:
-                high = mid - 1
-
-        return None
-
-
-    # Undo Feature #
-
-    def undo(self):
-        if not self.undo_stack:
-            print("Nothing to undo.")
-            return
-
-        action = self.undo_stack.pop()
-
-        if action[0] == "remove_station":
-            self.remove_station(action[1])
-        elif action[0] == "remove_connection":
-            self.remove_connection(action[1], action[2])
-
-
-
-# Menu System #
+# -------------------------
+# Menu System
+# -------------------------
 
 def main():
     system = TransitSystem()
 
+    # Example Baltimore-style stations
+    system.add_station(1, "Inner Harbor", 100)
+    system.add_station(2, "Fells Point", 80)
+    system.add_station(3, "Johns Hopkins", 120)
+    system.add_station(4, "Downtown", 200)
+
+    system.add_connection(1, 2, 5)
+    system.add_connection(2, 3, 7)
+    system.add_connection(1, 4, 3)
+    system.add_connection(4, 3, 4)
+
     while True:
         print("\n--- Transit System Menu ---")
-        print("1. Add Station")
-        print("2. Add Connection")
-        print("3. Display Network")
-        print("4. DFS")
-        print("5. BFS")
-        print("6. Shortest Path")
-        print("7. Add Passenger")
-        print("8. Board Passenger")
-        print("9. Sort Stations by Capacity")
-        print("10. Undo")
-        print("11. Exit")
+        print("1. Display Network")
+        print("2. DFS")
+        print("3. BFS")
+        print("4. Shortest Path (Dijkstra)")
+        print("5. Add Passenger (Traffic)")
+        print("6. Board Passenger")
+        print("7. Search Station by Name")
+        print("8. Exit")
 
         choice = input("Enter choice: ")
 
         if choice == "1":
-            sid = int(input("Station ID: "))
-            name = input("Name: ")
-            cap = int(input("Capacity: "))
-            system.add_station(sid, name, cap)
-
-        elif choice == "2":
-            id1 = int(input("From ID: "))
-            id2 = int(input("To ID: "))
-            system.add_connection(id1, id2)
-
-        elif choice == "3":
             system.display_network()
 
-        elif choice == "4":
+        elif choice == "2":
             start = int(input("Start ID: "))
             system.dfs(start)
 
-        elif choice == "5":
+        elif choice == "3":
             start = int(input("Start ID: "))
             system.bfs(start)
 
-        elif choice == "6":
+        elif choice == "4":
             start = int(input("Start ID: "))
             end = int(input("End ID: "))
-            path = system.shortest_path(start, end)
-            print("Path:", path)
+            result = system.dijkstra(start, end)
 
-        elif choice == "7":
+            if result:
+                dist, path = result
+                print("Shortest Path:", system.print_path(path))
+                print("Total Distance (with traffic):", dist)
+            else:
+                print("No path found")
+
+        elif choice == "5":
             sid = int(input("Station ID: "))
             name = input("Passenger Name: ")
             system.add_passenger(sid, name)
 
-        elif choice == "8":
+        elif choice == "6":
             sid = int(input("Station ID: "))
             system.board_passenger(sid)
 
-        elif choice == "9":
-            sorted_list = system.bubble_sort_stations()
-            for s in sorted_list:
-                print(s)
+        elif choice == "7":
+            name = input("Enter station name: ")
+            sid = system.search_by_name(name)
+            if sid:
+                print(f"Station ID: {sid}")
+            else:
+                print("Not found")
 
-        elif choice == "10":
-            system.undo()
-
-        elif choice == "11":
+        elif choice == "8":
             print("Exit")
             break
 
         else:
-            print("Invalid choice.")
+            print("Invalid choice")
 
 
 if __name__ == "__main__":
